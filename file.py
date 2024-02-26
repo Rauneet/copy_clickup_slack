@@ -3,122 +3,166 @@ import datetime
 from pytz import timezone
 import pprint
 import calendar
+import time
+from dotenv import load_dotenv
+import os
+
+load_dotenv()        #this will load the environment variables from .env file
+# Constants 
+CLICKUP_API_TOKEN = os.getenv('CLICKUP_API_TOKEN')                                                                                            #'pk_73223342_17LY9UC6TE84D6P5MF2ALXU5W8UT6LHA'  #clickup api token
+SLACK_WEBHOOK_URL = os.getenv('SLACK_WEBHOOK_URL')                                                                                            #'https://hooks.slack.com/triggers/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'  #slack webhook url-'https://hooks.slack.com/services/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'- previous webhook
+CLICKUP_API_ENDPOINT = 'https://api.clickup.com/api/v2'       #clickup api endpoint
+HEADERS = {
+    'Authorization': CLICKUP_API_TOKEN
+    }
+SECONDS_IN_AN_HOUR = 3600
 
 
-CLICKUP_API_TOKEN = 'pk_67495744_YZUBMLUMJ4QQHOZK9XCOA8W9D8VEOD9S'
-SLACK_WEBHOOK_URL = 'https://hooks.slack.com/services/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'
-CLICKUP_SPACE_ID = '90160582515'
-CUSTOMER_TICKET_LIST_ID = '901601275948'
-CLICKUP_API_ENDPOINT = 'https://api.clickup.com/api/v2'
-HEADERS = {'Authorization': CLICKUP_API_TOKEN}
-
-
+# Function to check whether it is night time or not 
+# Working hour is defined from 9 AM to 9 PM
 def is_night_time():
     tz = timezone('Asia/Kolkata')
     current_time = datetime.datetime.now(tz)
-    # print(current_time.time())
-    morning = datetime.time(hour = 9, minute = 0)
-    # print(morning)
-    night = datetime.time(hour = 21, minute = 0)
-    if(current_time.time() >= morning and current_time.time() <= night):
-        return False
-    else:
-        return True
+    return not 9 <= current_time.hour <= 21
 
 
-
-def get_tasks_and_notify(list_id):
-    if not is_night_time():
-        print('Sending... Notification to slack')
-        
-        response = requests.get(f'{CLICKUP_API_ENDPOINT}/list/{list_id}/task', headers=HEADERS)
-        if response.status_code == 200:
-            tickets = response.json().get('tasks', [])
-            for ticket in tickets:
-                # priority = ticket['priority']['priority_type'] if ticket.get('priority_type') else ""
-                # if priority.lower() not in ['high' , 'urgent']:
-                #     print(f'Ticket is not urgent or high priority')
-                #     continue
-                # is_bug = False
-                # for field in ticket.get('custom_fields' , []):
-                #     if field['name'].strip().lower() == 'request type' and any(option['name'].strip().lower() == 'bug' for option in field['type_config']['option']):
-                #         is_bug = True
-                #         break
-                #     if not is_bug:
-                #         print(f'Ticket {task_id} is not marked as bug!!')
-                #         continue
-                
-
-                # is_bug , high_urgent_priority = False, False
-                # for field in ticket.get('custom_fields', []):
-                #     if field['name'] == "Request_type" and field.get('value') == 'Bug':
-                #         is_bug = True
-                # if not (is_bug and high_urgent_priority):
-                #     continue
-                priority = ticket['priority']
-                priority_type = priority['priority']
-                if priority_type in ['High' , 'Urgent']:
-                    print('Ticket is urgent or high priority' + priority_type)
-                else:
-                    print('Ticket is not ugent or high priority!!')
-                task_id = ticket['id']
-                # print(task_id)
-               
-            
-                custom_fields = ticket['custom_fields']
-                for field in custom_fields:
-                    name = field['name']
-                    if (name == "request type "):
-                       options =  field['type_config']
-                       for option in options['options']:
-                           option_name =option['name']
-                        #    print("got the option name " + option_name)
-                           if (option_name == "bug "):
-                               print("got the ticket where request type is bug")
-    
-                           
-                comment = requests.get(f'{CLICKUP_API_ENDPOINT}/task/{task_id}/comment',headers=HEADERS)
-                
-                if comment.status_code == 200:
-                    comment_res = comment.json().get('comments' ,[])
-                    pprint.pprint(comment_res)
-                    if len(comment_res)>0 :
-                        date_time = comment_res[0]['date']
-                        date_time = int(date_time[0:10])
-                        
-                        current_time = datetime.datetime.now()
-                        epoch_time = int(calendar.timegm(current_time.timetuple()))
-                        print(f"{date_time} {epoch_time}")
-                        if (epoch_time - date_time) > 7200:
-                            message = f'This ticket has not recieved any comment since 2 hour - https://app.clickup.com/t/{task_id} please update with the current progress.'
-                            if send_message_slack(message) == 200:
-                                print(f'Success!!!')
-                                
-                            else:
-                                print(f"Failed to send notification for task ID {task_id}.")     
-                    else:
-                        print(f"no comments for task {task_id}")
-            
-def send_message_slack(message):
+def send_message_slack(message, task_url):
+    full_message = f'{message} Ticket URL:'
     payload = {
-        'text' : message
+        'full_message' : full_message,
+        'task_url': task_url
     }
-    response = requests.post(SLACK_WEBHOOK_URL, json=payload)
+    headers = {
+        "Content-Type": "application/json"
+    }
+    response = requests.post(SLACK_WEBHOOK_URL, json=payload, headers=headers)
+    return response.status_code == 200
+
+# def send_message_slack(message, task_url):
+#     full_message = f'{message} Task URL:{task_url}'                                                              #include task_url
+#     payload = {
+#         'text' : full_message                                           #it is message
+#     }
+#     response = requests.post(SLACK_WEBHOOK_URL, json=payload)
+#     return response.status_code == 200
+
+
+# def is_request_type_bug(custom_fields):
+#     for field in custom_fields:
+#         if field.get('name') == 'Request Type ':
+#             bug_option_id = None
+#             for option in field.get('type_config', {}).get('option', []):
+#                 if option.get('name').lower() == 'bug':
+#                     bug_option_id = option.get('id')
+#                     break
+#             if bug_option_id and str(field.get('value')) == str(bug_option_id):
+#                 return True
+#     return False
+# def is_recent_tickets(ticket, days=30):
+#     ticket_updated = datetime.datetime.fromtimestamp(int(ticket['date_updated'])/1000)
+#     return datetime.datetime.now() - ticket_updated < datetime.timedelta(days=days)
+
+def is_bug_task(ticket):
+    request_type_field_id = 'af553c42-561b-4260-93b0-ca2afa6b520f'
+    bug_option_id = "2c234b21-fb9a-49ad-bceb-0a342556e213"                      #Comment out 
+    for custom_field in ticket.get("custom_fields", []):
+        if custom_field.get("id") == request_type_field_id and custom_field.get("value") == bug_option_id:
+            return True
+    return False
+
+def get_tasks_and_notify(list_id, list_name):
+    if is_night_time():
+        return            # Skip execution during night time
+
+    response = requests.get(f'{CLICKUP_API_ENDPOINT}/list/{list_id}/task', headers=HEADERS)
+    if response.status_code != 200:
+        return             # Exit if tasks cannot be fetched
+
+    tickets = response.json().get('tasks', [])
+    for ticket in tickets:    
+        task_url = ticket.get('url')     #this line will remain
+        
+        # print(task_url)                            #for debugging
+        # is_bug = False
+        # for field in ticket.get('custom_fields', []):
+        #     if field.get('name') == 'Request Type ':
+        #         if 'value' in field and field.get('value') is not None:
+        #             for option in field.get('type_config', {}).get('options', []):
+        #                 if option.get('name').lower() == 'bug' and str(field.get('value')) == str(option.get('id')):
+        #                     is_bug = True
+        #                     break
+        #         break
+        # if is_bug:
+        #     task_url = ticket.get('url')
+        #     print(f"Bug Ticket URL: {task_url}")
+            
+                   
+
+        status_type = ticket.get('status', {}).get('status', '').lower().replace(" ", "")
+        #print(f"Debug - Ticket ID: {ticket['id']} Status: {status_type}") 
+        priority = ticket.get('priority')    #get to the priority object  and then access the attribute value
+        # retrieves the ticket priority in lowercase for better consistency default to none if priority is not set 
+        priority_type = priority.get('priority', '').lower() if priority and isinstance(priority, dict) else 'none'
+        
+        # Check for desired status and priority
+        if status_type in ['open','inprogress','pending(ack)'] and priority_type in ['high', 'urgent']:
+            task_id = ticket['id']
+            # task_url = f"https://app.clickup.com/t/{task_id}"
+         # Fetches comments for a given task from ClickUp   
+            comment_response = requests.get(f'{CLICKUP_API_ENDPOINT}/task/{task_id}/comment', headers=HEADERS)
+            if comment_response.status_code == 200:
+                # Extracts the list of comments
+                comments = comment_response.json().get('comments' ,[])
+                #filter the comments made by bot
+                user_comments = [comment for comment in comments if comment['user']['id'] != -1]
+                pprint.pprint(comments)
+                # Checks if there are more than two comments on the task.
+                if len(user_comments) > 2:
+                    print(f"Task ID: {task_id} has more than two user comments, no action needed.")
+                    continue
+                #checks if there are comments and check the time of the last comment 
+                if user_comments:
+                     # Converts the timestamp of the last comment from milliseconds to seconds for comparison.
+                    last_comment_timestamp = int(user_comments[-1]['date']) // 1000
+                    #check for the current time 
+                    current_time = time.time()
+                    # Checks if the last comment was made more than 2 hours ago.
+                    if(current_time - last_comment_timestamp) > 7200:
+                        message = f'Update with latest progress.'  # this is included https://app.clickup.com/t/{task_id}
+                        # task_url =  f'https://app.clickup.com/t/{task_id}'    
+                        if send_message_slack(message,task_url):                                              #inten
+                            print(f'Message being sent' , message)                                            #inten
+                        else:
+                            print(f'Failed to send notification!!')
+                    else:
+                        print(f'No need to notify as last comment was made within 2 hours')   # Last comment was within 2 hours, no notification needed.
+                else:
+                    print(f'No comments in the ticket is made')   # No comments have been made on the task.
+            else:
+                print(f'failed to fetch ticket comments')    #Failed to fetch the task comments
+            
+                    
+# retrieves the lists from the specific folder in the clickup
+def get_list(folder_id):
+    response = requests.get(f'{CLICKUP_API_ENDPOINT}/folder/{folder_id}/list', headers=HEADERS)
     if response.status_code == 200:
-        return response.status_code
+        return response.json().get('lists', [])
+    return []
 
-# def check_task_and_notify():
-#     if not is_night_time():
-#         tasks = get_tasks(CUSTOMER_TICKET_LIST_ID)
-#         if tasks:
-#             for task in tasks:
-#                 message = f'Ticket Id {task[id]} has not been commented over 2 hours. Please add a comment.'
-#                 send_message_slack(message)
-#         else:
-#             print('No task require notification')
-#     else:
-#         print('Its night time no notificatin sent.')
+# retrieves all the ticket/task from the specific list and also get the list name and list id and call the get_task_and_notify() for processing each ticket in the list
+def get_tickets_from_customer_lists(folder_id):
+    lists = get_list(folder_id)
+    for list_item in lists:
+        list_name, list_id = list_item.get('name'), list_item.get('id')
+        print(f'Fetching tickets for list: {list_name}')
+        get_tasks_and_notify(list_id,list_name)
 
-
-# pprint.pprint(get_tasks('901601275948'))
-print(get_tasks_and_notify('901601275948'))
+if not is_night_time():
+    # it will check for new tickets every 60 min
+    while True:                          #1
+        print('checking for new tickets to notify')  #2
+        get_tickets_from_customer_lists("109448264")
+        print(f"Waiting for {SECONDS_IN_AN_HOUR // 60} minutes until the next check.")  #3  
+        time.sleep(SECONDS_IN_AN_HOUR)  #4
+else:
+    print("It's night time. No operations will be performed.")
